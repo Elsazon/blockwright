@@ -146,6 +146,8 @@ h2.sec{font-family:"Barlow Semi Condensed",sans-serif;font-size:10.5px;font-weig
 .btn.ghost{background:none;border:1px solid var(--line);color:var(--muted)}
 .btn.ghost:hover{color:var(--text);border-color:var(--line-2)}
 .btn.wide{width:100%}
+.btn.sm{padding:6px 10px;font-size:11.5px}
+.btn.ghost[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .btn[disabled]{opacity:.4;pointer-events:none}
 .btnrow{display:flex;gap:6px;flex-wrap:wrap}
 
@@ -242,6 +244,15 @@ dialog::backdrop{background:rgba(5,4,3,.72)}
         <button class="tool" id="tFill" aria-pressed="false" title="Fill a box">
           <svg viewBox="0 0 24 24"><path d="M4 8h16v10H4z" stroke-dasharray="3 2"/><path d="M4 8V5h3"/><path d="M20 8V5h-3"/></svg><span>FILL</span>
         </button>
+        <button class="tool" id="tBrush" aria-pressed="false" title="Sphere brush">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/></svg><span>BRUSH</span>
+        </button>
+        <button class="tool" id="tLine" aria-pressed="false" title="Line between two points">
+          <svg viewBox="0 0 24 24"><circle cx="5" cy="19" r="2"/><circle cx="19" cy="5" r="2"/><path d="M7 17L17 7"/></svg><span>LINE</span>
+        </button>
+        <button class="tool" id="tPaste" aria-pressed="false" title="Paste the copied region" disabled>
+          <svg viewBox="0 0 24 24"><path d="M9 4h6v3H9z"/><path d="M7 5H5v15h14V5h-2"/><path d="M9 12h6"/><path d="M9 16h4"/></svg><span>PASTE</span>
+        </button>
         <button class="tool" id="tPick" aria-pressed="false" title="Pick a block off the model">
           <svg viewBox="0 0 24 24"><path d="M15 4l5 5"/><path d="M17.5 6.5L8 16l-4 4 4-1 9.5-9.5"/></svg><span>PICK</span>
         </button>
@@ -289,6 +300,35 @@ dialog::backdrop{background:rgba(5,4,3,.72)}
           <button class="btn ghost" id="doClear">Clear it</button>
         </div>
 
+        <div class="btnrow" id="copyActions" hidden style="margin-top:7px">
+          <button class="btn ghost" id="doCopy">Copy this region</button>
+        </div>
+        <div id="clipInfo" class="note" style="margin-top:7px"></div>
+
+        <h2 class="sec sec-gap">Brush &amp; line</h2>
+        <div class="field"><label>Brush size</label>
+          <input id="brushR" type="range" min="1" max="12" value="3" style="padding:0">
+          <div class="note mono" id="brushLbl" style="margin:4px 0 0">radius 3</div></div>
+        <label class="note" style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="brushHollow" style="width:16px;height:16px;accent-color:var(--accent)">
+          Shell only (hollow sphere)
+        </label>
+
+        <h2 class="sec sec-gap">Mirror</h2>
+        <p class="note">Every block you place or break is copied across the mirror line. Set the line where your build's centre is.</p>
+        <div class="btnrow" style="margin-bottom:8px">
+          <button class="btn ghost sm" id="mirOff" aria-pressed="true">Off</button>
+          <button class="btn ghost sm" id="mirX" aria-pressed="false">Across X</button>
+          <button class="btn ghost sm" id="mirZ" aria-pressed="false">Across Z</button>
+          <button class="btn ghost sm" id="mirBoth" aria-pressed="false">Both</button>
+        </div>
+        <div class="field"><label>Mirror line at X / Z</label>
+          <div class="three mono" style="grid-template-columns:1fr 1fr">
+            <input id="mirCX" type="text" inputmode="numeric" value="0">
+            <input id="mirCZ" type="text" inputmode="numeric" value="0">
+          </div></div>
+        <button class="btn ghost wide" id="mirCentre">Put it in the middle of the build</button>
+
         <h2 class="sec sec-gap">Swap a block everywhere</h2>
         <div class="field"><label>Replace this</label>
           <select id="repFrom"></select></div>
@@ -331,8 +371,30 @@ dialog::backdrop{background:rgba(5,4,3,.72)}
         </div>
 
         <h2 class="sec sec-gap">Build Board</h2>
-        <p class="note">Copies this build's size and materials in the shape the board wants, ready to paste or hand to Claude.</p>
-        <button class="btn ghost wide" id="copyBoard">Copy for the Build Board</button>
+        <p class="note">Fill these in once and they stay with the build. The button copies a record Claude can file on the board as is.</p>
+        <div class="field"><label>Build name on the board</label><input id="bdName" type="text" placeholder="TOOGOOD CASTLE"></div>
+        <div class="three" style="grid-template-columns:1fr 1fr">
+          <div class="field"><label>Type</label>
+            <select id="bdType">
+              <option value="commission">Commission</option>
+              <option value="own">My build</option>
+              <option value="server">Server project</option>
+              <option value="other">Other work</option>
+            </select></div>
+          <div class="field"><label>Stage</label>
+            <select id="bdStage">
+              <option value="idea">Idea</option>
+              <option value="designing" selected>Designing</option>
+              <option value="building">Building</option>
+              <option value="on_hold">On hold</option>
+              <option value="done">Done</option>
+            </select></div>
+        </div>
+        <div class="field"><label>Client (if it's a commission)</label><input id="bdClient" type="text" placeholder=""></div>
+        <div class="field"><label>What it is</label><input id="bdSummary" type="text" placeholder="Two-story Japanese building"></div>
+        <div class="field"><label>Next step</label><input id="bdNext" type="text" placeholder="Finish the roof, then price it"></div>
+        <button class="btn wide" id="copyBoard">Copy the board record</button>
+        <div id="bdMsg"></div>
 
         <h2 class="sec sec-gap">Quality</h2>
         <label class="note" style="display:flex;align-items:center;gap:8px">
@@ -348,7 +410,16 @@ dialog::backdrop{background:rgba(5,4,3,.72)}
         </div>
         <input type="file" id="fileInput" accept=".litematic,.schematic,.nbt" hidden>
         <div id="ioMsg"></div>
-        <h2 class="sec">Saved on this device</h2>
+        <h2 class="sec">Schematic library</h2>
+        <p class="note">Files kept in your repo's <span class="mono">schematics/</span> folder. Put a <span class="mono">.litematic</span> there once and it shows up here on every device.</p>
+        <div class="field"><label>Repo</label>
+          <input id="libRepo" type="text" placeholder="Elsazon/blockwright" class="mono" style="font-size:12px"></div>
+        <div class="btnrow" style="margin-bottom:8px">
+          <button class="btn ghost sm" id="libRefresh">Refresh the list</button>
+        </div>
+        <div id="libList"></div>
+
+        <h2 class="sec sec-gap">Saved on this device</h2>
         <div id="projList"></div>
       </div>
     </div>
@@ -388,8 +459,7 @@ dialog::backdrop{background:rgba(5,4,3,.72)}
 </dialog>
 
 <script type="text/js-worker" id="bw-worker">
-/* Generated by build_worker.py — do not edit.
-   worker.js + litematic.js + blocks.js, flattened into a classic worker. */
+/* generated — worker.js + litematic.js + blocks.js */
 "use strict";
 
 
@@ -768,6 +838,7 @@ let palIndex = new Map([[AIR, 0]]);
 let states = null;                   // Uint16Array, index y*W*L + z*W + x
 let useAO = true;
 let palRGB = new Uint8Array(3);
+let clip = null;                     // { w, h, l, names[], idx Uint16Array }
 
 const idx = (x, y, z) => y * W * L + z * W + x;
 const inBounds = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < W && y < H && z < L;
@@ -1009,6 +1080,103 @@ self.onmessage = async (e) => {
             transfersOf(batch));
         }
         if (total === 0) self.postMessage({ id, chunks: [], progress: 1, done: true });
+        break;
+      }
+
+      case 'sphere': {
+        const { cx, cy, cz, r, block, hollow } = m;
+        const dirty = new Set(); const undo = [];
+        const r2 = r * r, ri2 = (r - 1) * (r - 1);
+        for (let x = Math.ceil(cx - r); x <= cx + r; x++)
+          for (let y = Math.ceil(cy - r); y <= cy + r; y++)
+            for (let z = Math.ceil(cz - r); z <= cz + r; z++) {
+              const d2 = (x - cx) ** 2 + (y - cy) ** 2 + (z - cz) ** 2;
+              if (d2 > r2) continue;
+              if (hollow && d2 < ri2) continue;
+              const prev = setBlock(x, y, z, block);
+              if (prev === null) continue;
+              undo.push({ x, y, z, block: palette[prev] });
+              dirtyFor(dirty, x, y, z);
+            }
+        const chunks = [...dirty].map(keyToChunk).map(([a, b, c]) => meshChunk(a, b, c));
+        self.postMessage({ id, ok: true, chunks, undo, palette, changed: undo.length }, transfersOf(chunks));
+        break;
+      }
+
+      case 'line': {
+        const { x0, y0, z0, x1, y1, z1, block, thick } = m;
+        const dirty = new Set(); const undo = [];
+        const dx = x1 - x0, dy = y1 - y0, dz = z1 - z0;
+        const steps = Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) || 1;
+        const t = Math.max(0, (thick | 0) - 1);
+        const seen = new Set();
+        for (let i = 0; i <= steps; i++) {
+          const f = i / steps;
+          const bx = Math.round(x0 + dx * f), by = Math.round(y0 + dy * f), bz = Math.round(z0 + dz * f);
+          for (let ox = -t; ox <= t; ox++) for (let oy = -t; oy <= t; oy++) for (let oz = -t; oz <= t; oz++) {
+            if (ox * ox + oy * oy + oz * oz > t * t + t) continue;
+            const x = bx + ox, y = by + oy, z = bz + oz;
+            const k = x + ',' + y + ',' + z;
+            if (seen.has(k)) continue;
+            seen.add(k);
+            const prev = setBlock(x, y, z, block);
+            if (prev === null) continue;
+            undo.push({ x, y, z, block: palette[prev] });
+            dirtyFor(dirty, x, y, z);
+          }
+        }
+        const chunks = [...dirty].map(keyToChunk).map(([a, b, c]) => meshChunk(a, b, c));
+        self.postMessage({ id, ok: true, chunks, undo, palette, changed: undo.length }, transfersOf(chunks));
+        break;
+      }
+
+      case 'copyRegion': {
+        const ax = Math.min(m.x0, m.x1), bx = Math.max(m.x0, m.x1);
+        const ay = Math.min(m.y0, m.y1), by = Math.max(m.y0, m.y1);
+        const az = Math.min(m.z0, m.z1), bz = Math.max(m.z0, m.z1);
+        const w = bx - ax + 1, h = by - ay + 1, l = bz - az + 1;
+        const local = new Map(); const names = [];
+        const out = new Uint16Array(w * h * l);
+        let solid = 0;
+        for (let y = 0; y < h; y++) for (let z = 0; z < l; z++) for (let x = 0; x < w; x++) {
+          const nm = palette[states[idx(ax + x, ay + y, az + z)]];
+          let li = local.get(nm);
+          if (li === undefined) { li = names.length; local.set(nm, li); names.push(nm); }
+          out[(y * l + z) * w + x] = li;
+          if (!isAirName(nm.split('[')[0])) solid++;
+        }
+        clip = { w, h, l, names, idx: out };
+        self.postMessage({ id, ok: true, w, h, l, solid, types: names.length });
+        break;
+      }
+
+      case 'pasteRegion': {
+        if (!clip) { self.postMessage({ id, ok: false, error: 'nothing copied yet' }); break; }
+        const rot = ((m.rot | 0) % 4 + 4) % 4;
+        const { w, h, l } = clip;
+        const dirty = new Set(); const undo = [];
+        const skipAir = m.skipAir !== false;
+        for (let y = 0; y < h; y++) for (let z = 0; z < l; z++) for (let x = 0; x < w; x++) {
+          const nm = clip.names[clip.idx[(y * l + z) * w + x]];
+          if (skipAir && isAirName(nm.split('[')[0])) continue;
+          let tx, tz;
+          if (rot === 0) { tx = x; tz = z; }
+          else if (rot === 1) { tx = l - 1 - z; tz = x; }
+          else if (rot === 2) { tx = w - 1 - x; tz = l - 1 - z; }
+          else { tx = z; tz = w - 1 - x; }
+          const wx = m.x + tx, wy = m.y + y, wz = m.z + tz;
+          const prev = setBlock(wx, wy, wz, nm);
+          if (prev === null) continue;
+          undo.push({ x: wx, y: wy, z: wz, block: palette[prev] });
+          dirtyFor(dirty, wx, wy, wz);
+        }
+        const chunks = [...dirty].map(keyToChunk).map(([a, b, c]) => meshChunk(a, b, c));
+        self.postMessage({ id, ok: true, chunks, undo, palette, changed: undo.length }, transfersOf(chunks));
+        break;
+      }
+
+      case 'clipInfo': {
+        self.postMessage({ id, ok: true, clip: clip ? { w: clip.w, h: clip.h, l: clip.l } : null });
         break;
       }
 
@@ -1276,6 +1444,10 @@ let yMin = 0, yMax = 0;
 let dirty = false;
 const undoStack = [], redoStack = [];
 let sel = { a: null, b: null };
+let mirror = { mode: 'off', cx: 0, cz: 0 };
+let lineA = null;
+let clipSize = null;
+let boardFields = {};
 
 /* ---------------------------------------------------------------- three */
 let renderer, scene, camera, pickTarget, needsRender = true;
@@ -1582,10 +1754,15 @@ function pickFast(cx, cy) {
 /* ---------------------------------------------------------------- tools */
 function setTool(t) {
   tool = t;
-  for (const [id, name] of [['tOrbit', 'orbit'], ['tPlace', 'place'], ['tBreak', 'break'], ['tFill', 'fill'], ['tPick', 'pick']]) {
+  for (const [id, name] of [['tOrbit', 'orbit'], ['tPlace', 'place'], ['tBreak', 'break'], ['tFill', 'fill'],
+                            ['tBrush', 'brush'], ['tLine', 'line'], ['tPaste', 'paste'], ['tPick', 'pick']]) {
     $('#' + id).setAttribute('aria-pressed', name === t ? 'true' : 'false');
   }
+  lineA = null;
   if (t === 'fill') { sel = { a: null, b: null }; updateSel(); banner('Tap one corner, then the opposite corner'); }
+  else if (t === 'line') banner('Tap the start, then the end');
+  else if (t === 'brush') banner('Drag to paint a ball of blocks');
+  else if (t === 'paste') banner(clipSize ? `Tap where the ${clipSize} goes` : 'Copy a region first');
   else banner(null);
 }
 function banner(txt, cancel) {
@@ -1612,6 +1789,37 @@ async function onTap(cx, cy) {
     return;
   }
   if (tool === 'break') { await applyEdit([{ x: hit.x, y: hit.y, z: hit.z, block: AIR }]); return; }
+  if (tool === 'brush') {
+    const r = Math.max(1, parseInt($('#brushR').value, 10) || 3);
+    const c = { cx: hit.x + hit.n[0] * r * 0, cy: hit.y, cz: hit.z };
+    const pts = mirror.mode === 'off' ? [[hit.x, hit.z]] : mirrored(hit.x, hit.z);
+    for (const [bx, bz] of pts) {
+      await runOp({ op: 'sphere', cx: bx, cy: c.cy, cz: bz, r,
+                    block: selectedBlock, hollow: $('#brushHollow').checked });
+    }
+    return;
+  }
+  if (tool === 'line') {
+    const on = { x: hit.x + hit.n[0], y: hit.y + hit.n[1], z: hit.z + hit.n[2] };
+    if (!lineA) { lineA = on; banner('Now tap the end'); return; }
+    const b2 = on;
+    const thick = Math.max(1, Math.round((parseInt($('#brushR').value, 10) || 3) / 3));
+    const ends = mirror.mode === 'off' ? [[lineA.x, lineA.z, b2.x, b2.z]]
+      : mirrored(lineA.x, lineA.z).map((p, i) => {
+          const q = mirrored(b2.x, b2.z)[i]; return [p[0], p[1], q[0], q[1]];
+        });
+    for (const [ax, az, bx, bz] of ends) {
+      await runOp({ op: 'line', x0: ax, y0: lineA.y, z0: az, x1: bx, y1: b2.y, z1: bz,
+                    block: selectedBlock, thick });
+    }
+    lineA = null; banner('Tap the start, then the end');
+    return;
+  }
+  if (tool === 'paste') {
+    if (!clipSize) { toast('Copy a region first'); return; }
+    await runOp({ op: 'pasteRegion', x: hit.x, y: hit.y + 1, z: hit.z, rot: 0, skipAir: true }, 'Pasting');
+    return;
+  }
   if (tool === 'fill') {
     const p = sel.a === null ? hit : hit;
     if (sel.a === null) { sel.a = { x: p.x, y: p.y, z: p.z }; banner('Now tap the opposite corner'); }
@@ -1634,12 +1842,37 @@ function updateSel() {
   $('#selInfo').innerHTML = `<b>${w} &times; ${h} &times; ${d}</b> &middot; ${(w * h * d).toLocaleString()} blocks` +
     `<br><span class="mono" style="font-size:11px;color:var(--faint)">from ${x0},${y0},${z0} to ${x1},${y1},${z1}</span>`;
   $('#fillActions').hidden = !sel.b;
+  const ca = $('#copyActions'); if (ca) ca.hidden = !sel.b;
   needsRender = true;
 }
 
 /* ---------------------------------------------------------------- edits */
+/* Mirroring is done here rather than in the engine so undo still sees one
+   action, and so it applies the same way to every tool. */
+function mirrored(x, z) {
+  const out = [[x, z]];
+  const mx = () => 2 * mirror.cx - x, mz = () => 2 * mirror.cz - z;
+  if (mirror.mode === 'x' || mirror.mode === 'both') out.push([mx(), z]);
+  if (mirror.mode === 'z' || mirror.mode === 'both') out.push([x, mz()]);
+  if (mirror.mode === 'both') out.push([mx(), mz()]);
+  return out;
+}
+function expandOps(ops) {
+  if (mirror.mode === 'off') return ops;
+  const seen = new Set(), out = [];
+  for (const op of ops) {
+    for (const [x, z] of mirrored(op.x, op.z)) {
+      if (x < 0 || z < 0 || x >= W || z >= L) continue;
+      const k = x + ',' + op.y + ',' + z;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({ x, y: op.y, z, block: op.block });
+    }
+  }
+  return out;
+}
 async function applyEdit(ops) {
-  const r = await call({ op: 'edit', ops });
+  const r = await call({ op: 'edit', ops: expandOps(ops) });
   palette = r.palette;
   for (const c of r.chunks) applyChunk(c);
   if (r.undo.length) { pushUndo(r.undo); markDirty(); }
@@ -1656,6 +1889,18 @@ async function doFill(block, hollow) {
   if (r.undo.length) { pushUndo(r.undo); markDirty(); }
   hideBoot();
   toast(`${r.changed.toLocaleString()} blocks changed`);
+}
+async function runOp(msg, label) {
+  if (label) showBoot(label);
+  try {
+    const r = await call(msg);
+    palette = r.palette;
+    for (const c of r.chunks) applyChunk(c);
+    if (r.undo && r.undo.length) { pushUndo(r.undo); markDirty(); }
+    if (label) hideBoot();
+    if (typeof r.changed === 'number') toast(`${r.changed.toLocaleString()} blocks changed`);
+    return r;
+  } catch (err) { if (label) hideBoot(); toast('That did not work: ' + err.message); throw err; }
 }
 function pushUndo(undo) { undoStack.push(undo); if (undoStack.length > 60) undoStack.shift(); redoStack.length = 0; syncUndo(); }
 function syncUndo() { $('#btnUndo').disabled = !undoStack.length; $('#btnRedo').disabled = !redoStack.length; }
@@ -1691,6 +1936,12 @@ async function afterLoad(info, name) {
   yMin = 0; yMax = H - 1;
   undoStack.length = 0; redoStack.length = 0; syncUndo();
   sel = { a: null, b: null }; updateSel();
+  lineA = null;
+  for (const id of ['bdName', 'bdType', 'bdStage', 'bdClient', 'bdSummary', 'bdNext'])
+    if (boardFields[id] !== undefined) $('#' + id).value = boardFields[id];
+  if (!boardFields.bdName) $('#bdName').value = projectName;
+  mirror.cx = Math.floor((W - 1) / 2); mirror.cz = Math.floor((L - 1) / 2);
+  $('#mirCX').value = mirror.cx; $('#mirCZ').value = mirror.cz;
 
   clearChunks();
   const bounds = scene.getObjectByName('bounds');
@@ -1836,7 +2087,7 @@ async function saveProject() {
   const snap = await call({ op: 'snapshot' });
   projectId = await Projects.save({
     id: projectId, name: projectName, W: snap.W, H: snap.H, L: snap.L,
-    palette: snap.palette, states: snap.states
+    palette: snap.palette, states: snap.states, board: boardFields
   });
   dirty = false;
   renderProjects();
@@ -1854,11 +2105,85 @@ async function renderProjects() {
       const card = b.closest('.pcard'), id = Number(card.dataset.id);
       if (b.dataset.act === 'del') { await Projects.remove(id); renderProjects(); return; }
       const p = await Projects.get(id);
+      boardFields = p.board || {};
       showBoot('Opening');
       const info = await call({ op: 'loadState', W: p.W, H: p.H, L: p.L, palette: p.palette, states: p.states, ao: $('#aoToggle').checked }, [p.states]);
       projectId = id; dirty = false;
       await afterLoad(info, p.name);
     });
+  }
+}
+
+/* ---------------------------------------------------------------- library */
+/* Schematics kept next to the app in the repo. The listing comes from the
+   GitHub API (public, no key) and is cached, so the names still show offline
+   even though the files themselves need a connection to pull down. */
+const LIB_KEY = 'bw.libRepo', LIB_CACHE = 'bw.libCache';
+function libRepo() {
+  const v = ($('#libRepo').value || '').trim().replace(/^https?:\/\/github\.com\//, '').replace(/\/$/, '');
+  return v || guessRepo();
+}
+function guessRepo() {
+  const m = location.hostname.match(/^([^.]+)\.github\.io$/);
+  if (!m) return '';
+  const seg = location.pathname.split('/').filter(Boolean)[0];
+  return seg ? `${m[1]}/${seg}` : `${m[1]}/${m[1]}.github.io`;
+}
+function libRawUrl(repo, path) {
+  return `https://raw.githubusercontent.com/${repo}/main/${path}`;
+}
+async function libLoadList(force) {
+  const repo = libRepo();
+  const el = $('#libList');
+  if (!repo) { el.innerHTML = '<p class="empty">Type your repo above as <span class="mono">user/repo</span>.</p>'; return; }
+  let items = null;
+  if (!force) {
+    try { const c = JSON.parse(localStorage.getItem(LIB_CACHE) || 'null'); if (c && c.repo === repo) items = c.items; } catch (e) {}
+  }
+  if (!items) {
+    el.innerHTML = '<p class="empty">Looking\u2026</p>';
+    try {
+      const r = await fetch(`https://api.github.com/repos/${repo}/contents/schematics`, { headers: { Accept: 'application/vnd.github+json' } });
+      if (!r.ok) throw new Error(r.status === 404 ? 'no schematics folder in that repo yet' : 'GitHub said ' + r.status);
+      const j = await r.json();
+      items = j.filter(f => f.type === 'file' && /\.(litematic|schem|nbt)$/i.test(f.name))
+               .map(f => ({ name: f.name, path: f.path, size: f.size }));
+      try { localStorage.setItem(LIB_CACHE, JSON.stringify({ repo, items, at: Date.now() })); } catch (e) {}
+    } catch (err) {
+      el.innerHTML = `<div class="warn">Could not read the library: ${err.message}</div>`;
+      return;
+    }
+  }
+  if (!items.length) {
+    el.innerHTML = '<p class="empty">The <span class="mono">schematics/</span> folder is empty. Add your .litematic files to it in GitHub and refresh.</p>';
+    return;
+  }
+  el.innerHTML = items.map((f, i) =>
+    `<div class="pcard" data-i="${i}">
+       <div class="nm">${f.name.replace(/\.[^.]+$/, '')}</div>
+       <div class="meta mono">${(f.size / 1024).toFixed(0)} KB</div>
+       <div class="acts"><button data-act="open">Open in the editor</button></div>
+     </div>`).join('');
+  for (const b of el.querySelectorAll('button[data-act="open"]')) {
+    b.addEventListener('click', () => {
+      const f = items[+b.closest('.pcard').dataset.i];
+      importFromUrl(libRawUrl(libRepo(), f.path), f.name.replace(/\.[^.]+$/, ''));
+    });
+  }
+}
+async function importFromUrl(url, name) {
+  showBoot('Fetching the schematic');
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('could not download it (' + r.status + ')');
+    const buf = await r.arrayBuffer();
+    const info = await call({ op: 'import', buffer: buf, ao: $('#aoToggle').checked }, [buf]);
+    projectId = null; dirty = true; boardFields = {};
+    await afterLoad(info, name || info.name || 'Imported build');
+    scheduleSave();
+  } catch (err) {
+    hideBoot();
+    $('#ioMsg').innerHTML = `<div class="warn bad">${err.message}</div>`;
   }
 }
 
@@ -1947,14 +2272,21 @@ function copyForBoard() {
     const st = Math.floor(r.n / 64);
     return `${prettyName(r.block)} ${st ? st + ' stacks' : r.n}`;
   });
-  const text = [
-    `Name: ${projectName}`,
-    `Size: ${W} \u00d7 ${H} \u00d7 ${L}, ${total.toLocaleString()} blocks`,
-    `Block types: ${statRows.length}`,
-    `Main materials: ${top.join(', ')}`,
-    `Made with: Claude (Blockwright)`
-  ].join('\n');
-  copyText(text, 'Copied for the Build Board');
+  const TYPES = { commission: 'Commission', own: 'My build', server: 'Server project', other: 'Other work' };
+  const STAGES = { idea: 'Idea', designing: 'Designing', building: 'Building', on_hold: 'On hold', done: 'Done' };
+  const lines = ['BUILD BOARD RECORD'];
+  lines.push(`Name: ${$('#bdName').value || projectName}`);
+  lines.push(`Type: ${TYPES[$('#bdType').value]}`);
+  lines.push(`Stage: ${STAGES[$('#bdStage').value]}`);
+  if ($('#bdClient').value) lines.push(`Client: ${$('#bdClient').value}`);
+  if ($('#bdSummary').value) lines.push(`What it is: ${$('#bdSummary').value}`);
+  if ($('#bdNext').value) lines.push(`Next step: ${$('#bdNext').value}`);
+  lines.push(`Size: ${W} \u00d7 ${H} \u00d7 ${L}, ${total.toLocaleString()} blocks`);
+  lines.push(`Block types: ${statRows.length}`);
+  lines.push(`Main materials: ${top.join(', ')}`);
+  lines.push(`Made with: Claude (Blockwright)`);
+  copyText(lines.join('\n'), 'Board record copied');
+  $('#bdMsg').innerHTML = '<div class="warn ok">Paste it to Claude and say "put this on the Build Board".</div>';
 }
 function copyText(text, okMsg) {
   const done = () => toast(okMsg);
@@ -1993,6 +2325,38 @@ function initUI() {
   $('#tBreak').onclick = () => setTool('break');
   $('#tFill').onclick = () => setTool('fill');
   $('#tPick').onclick = () => setTool('pick');
+  $('#tBrush').onclick = () => setTool('brush');
+  $('#tLine').onclick = () => setTool('line');
+  $('#tPaste').onclick = () => setTool('paste');
+  $('#brushR').addEventListener('input', () => {
+    $('#brushLbl').textContent = 'radius ' + $('#brushR').value;
+  });
+  for (const [id, mode] of [['mirOff', 'off'], ['mirX', 'x'], ['mirZ', 'z'], ['mirBoth', 'both']]) {
+    $('#' + id).onclick = () => {
+      mirror.mode = mode;
+      for (const [i2] of [['mirOff'], ['mirX'], ['mirZ'], ['mirBoth']])
+        $('#' + i2).setAttribute('aria-pressed', i2 === id ? 'true' : 'false');
+    };
+  }
+  for (const id of ['mirCX', 'mirCZ'])
+    $('#' + id).addEventListener('input', () => {
+      mirror.cx = parseInt($('#mirCX').value, 10) || 0;
+      mirror.cz = parseInt($('#mirCZ').value, 10) || 0;
+    });
+  $('#mirCentre').onclick = () => {
+    mirror.cx = Math.floor((W - 1) / 2); mirror.cz = Math.floor((L - 1) / 2);
+    $('#mirCX').value = mirror.cx; $('#mirCZ').value = mirror.cz;
+  };
+  $('#doCopy').onclick = async () => {
+    if (!sel.a || !sel.b) return;
+    const r = await call({ op: 'copyRegion', x0: sel.a.x, y0: sel.a.y, z0: sel.a.z,
+                           x1: sel.b.x, y1: sel.b.y, z1: sel.b.z });
+    clipSize = `${r.w}\u00d7${r.h}\u00d7${r.l}`;
+    $('#clipInfo').innerHTML = `<div class="warn ok">Copied ${clipSize} \u00b7 ${r.solid.toLocaleString()} blocks. Pick PASTE and tap where it goes.</div>`;
+    $('#tPaste').disabled = false;
+  };
+  for (const id of ['bdName', 'bdType', 'bdStage', 'bdClient', 'bdSummary', 'bdNext'])
+    $('#' + id).addEventListener('input', () => { boardFields[id] = $('#' + id).value; markDirty(); });
   $('#tHome').onclick = () => resetView();
   $('#bannerCancel').onclick = () => { sel = { a: null, b: null }; updateSel(); setTool('orbit'); };
   $('#btnUndo').onclick = undo;
@@ -2050,6 +2414,14 @@ function initUI() {
   for (const b of document.querySelectorAll('[data-close]')) b.onclick = e => e.target.closest('dialog').close();
 
   $('#btnImport').onclick = () => $('#fileInput').click();
+  $('#libRefresh').onclick = () => {
+    try { localStorage.setItem(LIB_KEY, $('#libRepo').value.trim()); } catch (e) {}
+    libLoadList(true);
+  };
+  $('#libRepo').addEventListener('change', () => {
+    try { localStorage.setItem(LIB_KEY, $('#libRepo').value.trim()); } catch (e) {}
+    libLoadList(true);
+  });
   $('#fileInput').onchange = e => { const f = e.target.files[0]; if (f) importFile(f); e.target.value = ''; };
   $('#btnExport').onclick = () => { $('#xName').value = projectName; $('#xMsg').innerHTML = ''; $('#dlgExport').showModal(); };
   $('#xGo').onclick = exportFile;
@@ -2104,6 +2476,19 @@ async function start() {
     dirty = true; scheduleSave();
   }
   setTool('orbit');
+
+  try { $('#libRepo').value = localStorage.getItem(LIB_KEY) || guessRepo(); } catch (e) { $('#libRepo').value = guessRepo(); }
+  libLoadList(false);
+
+  // ?open=<file in schematics/, or a full url> loads a build straight away,
+  // which is how a Build Board card hands a schematic over
+  const q = new URLSearchParams(location.search).get('open');
+  if (q) {
+    const url = /^https?:/.test(q) ? q : libRawUrl(libRepo(), q.includes('/') ? q : 'schematics/' + q);
+    const nm = decodeURIComponent(q.split('/').pop() || '').replace(/\.[^.]+$/, '');
+    await importFromUrl(url, nm);
+  }
+
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 start();
