@@ -119,10 +119,25 @@ h2.sec{font-family:"Barlow Semi Condensed",sans-serif;font-size:10.5px;font-weig
   padding:4px 9px;font-family:"Barlow Semi Condensed",sans-serif;font-size:11.5px;font-weight:600;color:var(--muted);white-space:nowrap}
 .cats button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 
-#blockGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(42px,1fr));gap:4px}
-.bk{position:relative;aspect-ratio:1;border:2px solid transparent;border-radius:4px;padding:0;
-  background-clip:padding-box;box-shadow:inset -3px -3px 0 rgba(0,0,0,.26),inset 3px 3px 0 rgba(255,255,255,.18)}
-.bk[aria-pressed="true"]{border-color:var(--text);box-shadow:inset -3px -3px 0 rgba(0,0,0,.26),inset 3px 3px 0 rgba(255,255,255,.18),0 0 0 2px var(--accent)}
+#blockGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(164px,1fr));gap:3px}
+.catrow{display:flex;align-items:center;gap:6px;min-width:0}
+.catrow .cats{flex:1;min-width:0}
+.iconbtn{flex:none;width:30px;height:28px;padding:0;border:1px solid var(--line);border-radius:5px;
+  background:var(--surface-2);color:var(--muted);font-size:14px;line-height:1;cursor:pointer}
+.iconbtn[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.bk{display:flex;align-items:center;gap:7px;min-width:0;padding:5px 7px;border:1px solid transparent;
+  border-radius:5px;background:var(--surface-2);text-align:left;font:inherit;color:var(--text);cursor:pointer}
+.bk:hover{background:var(--surface-3)}
+.bk .sw{flex:none;width:18px;height:18px;border-radius:3px;
+  box-shadow:inset -3px -3px 0 rgba(0,0,0,.26),inset 3px 3px 0 rgba(255,255,255,.18)}
+.bk .lb{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;line-height:1.3}
+.bk[aria-pressed="true"]{border-color:var(--accent);background:var(--surface-3)}
+.bk[aria-pressed="true"] .lb{font-weight:600}
+#blockGrid.tiles{grid-template-columns:repeat(auto-fill,minmax(42px,1fr));gap:4px}
+#blockGrid.tiles .bk{aspect-ratio:1;padding:0;justify-content:center}
+#blockGrid.tiles .lb{display:none}
+#blockGrid.tiles .sw{width:100%;height:100%;border-radius:3px}
+
 #blockName{margin-top:8px;font-size:12px;color:var(--muted);min-height:32px}
 #blockName b{display:block;color:var(--text);font-size:13.5px;font-weight:600}
 #blockName .id{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--faint);word-break:break-all}
@@ -286,7 +301,8 @@ dialog::backdrop{background:rgba(5,4,3,.72)}
 
       <div class="pane" id="pBlocks" role="tabpanel">
         <input class="search" id="blockSearch" type="search" placeholder="Search blocks" aria-label="Search blocks">
-        <div class="cats" id="cats"></div>
+        <div class="catrow"><div class="cats" id="cats"></div>
+          <button id="gridMode" class="iconbtn" title="Switch between names and colour tiles" aria-pressed="false">▦</button></div>
         <div id="blockGrid"></div>
         <div id="blockName"></div>
       </div>
@@ -473,6 +489,263 @@ function colourOf(id){
   const base = id.split("[")[0]; const c = BY_ID.get(base); if (c) return c.c;
   return "#8A8A8A";
 }
+
+
+/* ===== shapes.js ===== */
+/* Real shapes for blocks that are not a full cube.
+   Everything is in sixteenths of a block, the same units Minecraft's own models
+   use, so a slab is [0,0,0, 16,8,16] and a fence post is [6,0,6, 10,16,10].
+
+   boxesFor(state) returns
+     null      the block fills its cell — the greedy mesher handles it
+     'cross'   two diagonal panes, for flowers, saplings, crops and the like
+     [boxes]   one or more boxes to draw
+
+   A block that is not a full cube also stops hiding its neighbours' faces and
+   stops casting ambient occlusion, which is what FULL below is read for. */
+
+const P = Object.create(null);           // state string -> parsed props
+function props(state) {
+  let p = P[state];
+  if (p) return p;
+  p = Object.create(null);
+  const i = state.indexOf('[');
+  if (i > 0) {
+    for (const kv of state.slice(i + 1, -1).split(',')) {
+      const j = kv.indexOf('=');
+      if (j > 0) p[kv.slice(0, j)] = kv.slice(j + 1);
+    }
+  }
+  P[state] = p;
+  return p;
+}
+const bare = s => { const i = s.indexOf('['); return (i > 0 ? s.slice(0, i) : s).replace(/^minecraft:/, ''); };
+
+/* ------------------------------------------------------------------ boxes */
+const B = (x0, y0, z0, x1, y1, z1) => [x0, y0, z0, x1, y1, z1];
+// turn a box a quarter turn about the block's middle: east -> south -> west -> north
+function rotY(b, n) {
+  let [x0, y0, z0, x1, y1, z1] = b;
+  for (let i = 0; i < (n & 3); i++) {
+    const nx0 = 16 - z1, nx1 = 16 - z0, nz0 = x0, nz1 = x1;
+    x0 = nx0; x1 = nx1; z0 = nz0; z1 = nz1;
+  }
+  return [x0, y0, z0, x1, y1, z1];
+}
+const flipY = b => [b[0], 16 - b[4], b[2], b[3], 16 - b[1], b[5]];
+const FACE_N = { east: 0, south: 1, west: 2, north: 3 };   // quarter turns from east
+const rotAll = (list, n) => n ? list.map(b => rotY(b, n)) : list;
+
+/* fences, walls and panes carry their own connections in the state, so the
+   arms are drawn only where the block actually joins something */
+function armed(p, post, arm, tallArm) {
+  const out = post ? [post] : [];
+  for (const [side, n] of [['north', 3], ['east', 0], ['south', 1], ['west', 2]]) {
+    const v = p[side];
+    if (!v || v === 'false' || v === 'none') continue;
+    const a = (v === 'tall' && tallArm) ? tallArm : arm;
+    for (const b of a) out.push(rotY(b, n));
+  }
+  return out;
+}
+
+const SLAB = { top: [B(0, 8, 0, 16, 16, 16)], bottom: [B(0, 0, 0, 16, 8, 16)] };
+const STAIR_TOP = {
+  straight: [B(8, 8, 0, 16, 16, 16)],
+  outer_right: [B(8, 8, 8, 16, 16, 16)],
+  outer_left: [B(8, 8, 0, 16, 16, 8)],
+  inner_right: [B(8, 8, 0, 16, 16, 16), B(0, 8, 8, 8, 16, 16)],
+  inner_left: [B(8, 8, 0, 16, 16, 16), B(0, 8, 0, 8, 16, 8)],
+};
+// north arm, drawn twice so a fence reads as two rails rather than one wall
+const FENCE_ARM = [B(7, 12, 0, 9, 15, 6), B(7, 6, 0, 9, 9, 6)];
+const WALL_ARM = [B(5, 0, 0, 11, 14, 5)];
+const WALL_ARM_TALL = [B(5, 0, 0, 11, 16, 5)];
+const PANE_ARM = [B(7, 0, 0, 9, 16, 7)];
+const VINE_SIDE = { north: B(0, 0, 0, 16, 16, 1), south: B(0, 0, 15, 16, 16, 16), west: B(0, 0, 0, 1, 16, 16), east: B(15, 0, 0, 16, 16, 16), up: B(0, 15, 0, 16, 16, 16) };
+
+/* blocks with a shape of their own that no suffix rule would catch */
+const NAMED = {
+  lily_pad: [B(1, 0, 1, 15, 1, 15)],
+  cake: [B(1, 0, 1, 15, 8, 15)],
+  lantern: [B(5, 0, 5, 11, 7, 11)],
+  soul_lantern: [B(5, 0, 5, 11, 7, 11)],
+  chest: [B(1, 0, 1, 15, 14, 15)],
+  trapped_chest: [B(1, 0, 1, 15, 14, 15)],
+  ender_chest: [B(1, 0, 1, 15, 14, 15)],
+  enchanting_table: [B(0, 0, 0, 16, 12, 16)],
+  brewing_stand: [B(7, 0, 7, 9, 14, 9), B(0, 0, 0, 16, 2, 16)],
+  stonecutter: [B(0, 0, 0, 16, 9, 16)],
+  daylight_detector: [B(0, 0, 0, 16, 6, 16)],
+  campfire: [B(0, 0, 0, 16, 7, 16)],
+  soul_campfire: [B(0, 0, 0, 16, 7, 16)],
+  grindstone: [B(2, 4, 4, 14, 16, 12)],
+  lectern: [B(0, 0, 0, 16, 2, 16), B(4, 2, 4, 12, 15, 12)],
+  flower_pot: [B(5, 0, 5, 11, 6, 11)],
+  conduit: [B(5, 5, 5, 11, 11, 11)],
+  dragon_egg: [B(1, 0, 1, 15, 16, 15)],
+  end_portal_frame: [B(0, 0, 0, 16, 13, 16)],
+  bamboo: [B(6, 0, 6, 10, 16, 10)],
+  sea_pickle: [B(6, 0, 6, 10, 6, 10)],
+  turtle_egg: [B(5, 0, 5, 11, 7, 11)],
+  bell: [B(4, 4, 4, 12, 16, 12)],
+  hopper: [B(0, 10, 0, 16, 16, 16), B(4, 4, 4, 12, 10, 12)],
+  anvil: [B(2, 0, 2, 14, 4, 14), B(4, 4, 4, 12, 10, 12), B(3, 10, 0, 13, 16, 16)],
+  chipped_anvil: [B(2, 0, 2, 14, 4, 14), B(4, 4, 4, 12, 10, 12), B(3, 10, 0, 13, 16, 16)],
+  damaged_anvil: [B(2, 0, 2, 14, 4, 14), B(4, 4, 4, 12, 10, 12), B(3, 10, 0, 13, 16, 16)],
+  farmland: [B(0, 0, 0, 16, 15, 16)],
+  dirt_path: [B(0, 0, 0, 16, 15, 16)],
+  grass_path: [B(0, 0, 0, 16, 15, 16)],
+  scaffolding: [B(0, 14, 0, 16, 16, 16), B(0, 0, 0, 2, 14, 2), B(14, 0, 0, 16, 14, 2), B(0, 0, 14, 2, 14, 16), B(14, 0, 14, 16, 14, 16)],
+  cactus: [B(1, 0, 1, 15, 16, 15)],
+  chorus_flower: [B(2, 2, 2, 14, 14, 14)],
+  honey_block: [B(1, 0, 1, 15, 15, 15)],
+  ladder: null,          // handled by facing, below
+};
+// a bowl: floor plus four walls
+const BOWL = [B(0, 0, 0, 16, 3, 16), B(0, 3, 0, 2, 16, 16), B(14, 3, 0, 16, 16, 16), B(2, 3, 0, 14, 16, 2), B(2, 3, 14, 14, 16, 16)];
+for (const k of ['cauldron', 'water_cauldron', 'lava_cauldron', 'powder_snow_cauldron', 'composter']) NAMED[k] = BOWL;
+
+/* plants and anything else drawn as a crossed pair of panes */
+const CROSS_EXACT = new Set(['short_grass', 'grass', 'tall_grass', 'fern', 'large_fern', 'dead_bush', 'seagrass',
+  'tall_seagrass', 'sugar_cane', 'sweet_berry_bush', 'nether_wart', 'wheat', 'carrots', 'potatoes', 'beetroots',
+  'torchflower_crop', 'cave_vines', 'cave_vines_plant', 'twisting_vines', 'twisting_vines_plant', 'weeping_vines',
+  'weeping_vines_plant', 'hanging_roots', 'glow_lichen', 'crimson_roots', 'warped_roots', 'nether_sprouts',
+  'brown_mushroom', 'red_mushroom', 'crimson_fungus', 'warped_fungus', 'cobweb', 'spore_blossom', 'pitcher_crop',
+  'big_dripleaf_stem', 'small_dripleaf', 'pink_petals', 'bush', 'firefly_bush', 'leaf_litter']);
+const CROSS_SUFFIX = ['_sapling', '_mushroom', '_fungus', '_roots', '_coral', '_coral_fan', '_bud'];
+const FLOWERS = new Set(['dandelion', 'poppy', 'blue_orchid', 'allium', 'azure_bluet', 'oxeye_daisy', 'cornflower',
+  'lily_of_the_valley', 'wither_rose', 'torchflower', 'sunflower', 'lilac', 'rose_bush', 'peony', 'open_eyeblossom',
+  'closed_eyeblossom', 'red_tulip', 'orange_tulip', 'white_tulip', 'pink_tulip', 'spore_blossom']);
+
+function isCross(n) {
+  if (CROSS_EXACT.has(n) || FLOWERS.has(n)) return true;
+  if (n.startsWith('potted_')) return true;
+  for (const s of CROSS_SUFFIX) if (n.endsWith(s)) return true;
+  return false;
+}
+
+/* ------------------------------------------------------------------ main */
+const CACHE = Object.create(null);
+function boxesFor(state) {
+  let v = CACHE[state];
+  if (v !== undefined) return v;
+  v = compute(state);
+  CACHE[state] = v;
+  return v;
+}
+/* true when the block fills its whole cell, which is what decides whether it
+   hides the face behind it and darkens its neighbours */
+function isFullBlock(state) { return boxesFor(state) === null; }
+
+function compute(state) {
+  const n = bare(state);
+  const p = props(state);
+  const face = n2 => FACE_N[p.facing] !== undefined ? FACE_N[p.facing] : n2;
+
+  if (n in NAMED && NAMED[n]) return NAMED[n];
+  if (isCross(n)) return 'cross';
+
+  if (n.endsWith('_slab')) {
+    if (p.type === 'double') return null;
+    return SLAB[p.type === 'top' ? 'top' : 'bottom'];
+  }
+  if (n.endsWith('_stairs')) {
+    const top = STAIR_TOP[p.shape] || STAIR_TOP.straight;
+    let list = [B(0, 0, 0, 16, 8, 16)].concat(top);
+    list = rotAll(list, face(0));
+    return p.half === 'top' ? list.map(flipY) : list;
+  }
+  if (n.endsWith('_fence_gate')) {
+    const open = p.open === 'true';
+    const list = open
+      ? [B(0, 5, 7, 2, 16, 9), B(14, 5, 7, 16, 16, 9)]
+      : [B(0, 5, 7, 16, 16, 9)];
+    return rotAll(list, (face(0) + 1) & 3);
+  }
+  if (n.endsWith('_fence')) return armed(p, B(6, 0, 6, 10, 16, 10), FENCE_ARM);
+  if (n.endsWith('_wall')) {
+    const post = p.up === 'false' ? null : B(4, 0, 4, 12, 16, 12);
+    const list = armed(p, post, WALL_ARM, WALL_ARM_TALL);
+    return list.length ? list : [B(4, 0, 4, 12, 16, 12)];
+  }
+  if (n.endsWith('_pane') || n === 'iron_bars') {
+    const list = armed(p, B(7, 0, 7, 9, 16, 9), PANE_ARM);
+    return list;
+  }
+  if (n.endsWith('_carpet') || n === 'moss_carpet' || n === 'pale_moss_carpet') return [B(0, 0, 0, 16, 1, 16)];
+  if (n.endsWith('_pressure_plate') || n.endsWith('_plate')) return [B(1, 0, 1, 15, 1, 15)];
+  if (n === 'snow') {
+    const layers = Math.max(1, Math.min(8, Number(p.layers) || 1));
+    return layers >= 8 ? null : [B(0, 0, 0, 16, layers * 2, 16)];
+  }
+  if (n.endsWith('_trapdoor')) {
+    if (p.open === 'true') return rotAll([B(0, 0, 0, 16, 16, 3)], face(3));
+    return [p.half === 'top' ? B(0, 13, 0, 16, 16, 16) : B(0, 0, 0, 16, 3, 16)];
+  }
+  if (n.endsWith('_door')) {
+    const turn = face(3) + (p.open === 'true' ? (p.hinge === 'right' ? 3 : 1) : 0);
+    return rotAll([B(0, 0, 0, 16, 16, 3)], turn & 3);
+  }
+  if (n === 'ladder') return rotAll([B(0, 0, 0, 16, 16, 3)], face(3));
+  if (n === 'vine') {
+    const out = [];
+    for (const k of ['north', 'south', 'east', 'west', 'up']) if (p[k] === 'true') out.push(VINE_SIDE[k]);
+    return out.length ? out : [VINE_SIDE.south];
+  }
+  if (n.endsWith('_torch') || n === 'torch') {
+    if (n.startsWith('wall_') || n.includes('_wall_torch') || p.facing) {
+      // a torch on a wall leans out of the block it is attached to
+      return rotAll([B(7, 3, 11, 9, 13, 16)], face(3));
+    }
+    return [B(7, 0, 7, 9, 10, 9)];
+  }
+  if (n.endsWith('_button')) {
+    if (p.face === 'ceiling') return rotAll([B(5, 14, 5, 11, 16, 11)], face(0));
+    if (p.face === 'wall') return rotAll([B(5, 6, 0, 11, 11, 2)], face(3));
+    return rotAll([B(5, 0, 5, 11, 2, 11)], face(0));
+  }
+  if (n === 'lever') {
+    if (p.face === 'ceiling') return [B(5, 12, 5, 11, 16, 11)];
+    if (p.face === 'wall') return rotAll([B(5, 4, 0, 11, 12, 3)], face(3));
+    return [B(5, 0, 5, 11, 4, 11)];
+  }
+  if (n === 'end_rod' || n === 'lightning_rod') {
+    const f = p.facing;
+    if (f === 'up' || f === 'down' || !f) return [B(6, 0, 6, 10, 16, 10)];
+    return rotAll([B(6, 6, 0, 10, 10, 16)], face(0));
+  }
+  if (n === 'chain') {
+    const ax = p.axis;
+    if (ax === 'x') return [B(0, 6, 6, 16, 10, 10)];
+    if (ax === 'z') return [B(6, 6, 0, 10, 10, 16)];
+    return [B(6, 0, 6, 10, 16, 10)];
+  }
+  if (n.endsWith('_candle')) return [B(7, 0, 7, 9, 6, 9)];
+  if (n === 'candle') return [B(7, 0, 7, 9, 6, 9)];
+  if (n === 'repeater' || n === 'comparator') return [B(0, 0, 0, 16, 2, 16)];
+  if (n.endsWith('_rail') || n === 'rail') return [B(0, 0, 0, 16, 1, 16)];
+  if (n.endsWith('_sign') || n.endsWith('_hanging_sign')) {
+    if (n.includes('wall_')) return rotAll([B(0, 4, 0, 16, 12, 2)], face(3));
+    return [B(7, 0, 7, 9, 16, 9)];
+  }
+  if (n.endsWith('_banner')) {
+    if (n.startsWith('wall_') || n.includes('_wall_banner')) return rotAll([B(0, 0, 0, 16, 16, 2)], face(3));
+    return [B(7, 0, 7, 9, 16, 9)];
+  }
+  if (n.endsWith('_head') || n.endsWith('_skull')) return [B(4, 0, 4, 12, 8, 12)];
+  if (n.endsWith('_bed')) return [B(0, 0, 0, 16, 9, 16)];
+  if (n.endsWith('_amethyst_bud') || n === 'amethyst_cluster') return [B(5, 0, 5, 11, 9, 11)];
+  if (n.endsWith('_cauldron')) return BOWL;
+  if (n === 'light' || n === 'barrier' || n === 'structure_void') return [];
+  return null;
+}
+
+/* the two diagonal panes of a cross-shaped plant, as boxes of no thickness */
+const CROSS_BOXES = [
+  [1.6, 0, 1.6, 14.4, 16, 14.4],
+  [14.4, 0, 1.6, 1.6, 16, 14.4],
+];
 
 
 /* ===== litematic.js ===== */
@@ -826,6 +1099,7 @@ async function writeLitematic({ name, author, W, H, L, palette, states, dataVers
    geometry back out, instead of shipping megabytes across on every click. */
 
 
+
 const CS = 32;                       // chunk edge, for meshing and drawing
 const PS = CS + 2;
 const AXES = [[0, 1, 2], [1, 0, 2], [2, 0, 1]];
@@ -859,9 +1133,15 @@ function palAdd(name) {
 }
 function isAirName(n) { return n === AIR || n === 'minecraft:cave_air' || n === 'minecraft:void_air'; }
 let airFlags = new Uint8Array(1);
+let fullFlags = new Uint8Array(1);     // 1 only for blocks that fill their whole cell
 function rebuildAirFlags() {
   airFlags = new Uint8Array(palette.length);
-  for (let i = 0; i < palette.length; i++) airFlags[i] = isAirName(palette[i].split('[')[0]) ? 1 : 0;
+  fullFlags = new Uint8Array(palette.length);
+  for (let i = 0; i < palette.length; i++) {
+    const air = isAirName(palette[i].split('[')[0]) ? 1 : 0;
+    airFlags[i] = air;
+    fullFlags[i] = (!air && isFullBlock(palette[i])) ? 1 : 0;
+  }
 }
 
 function chunkCounts() {
@@ -887,7 +1167,7 @@ function fillPad(cx, cy, cz) {
       const row = wy * W * L + z0 * W + wx, pb = (x * PS + y) * PS;
       for (let z = 0; z < PS; z++) {
         const wz = z0 + z; if (wz < 0 || wz >= L) continue;
-        pad[pb + z] = airFlags[states[row + z * W]] ? 0 : 1;
+        pad[pb + z] = fullFlags[states[row + z * W]];
       }
     }
   }
@@ -953,13 +1233,13 @@ function meshChunk(cx, cy, cz) {
 
             const c0 = [0, 0, 0]; c0[d] = s; c0[u] = iu; c0[v] = iv;
             const base = [cx * CS + c0[0], cy * CS + c0[1], cz * CS + c0[2]];
-            const p0 = base.slice(); p0[d] += (sg > 0 ? 1 : 0);
+            const p0 = c0.slice(); p0[d] += (sg > 0 ? 1 : 0);
             const corners = [p0.slice(), p0.slice(), p0.slice(), p0.slice()];
             corners[1][u] += wu; corners[2][u] += wu; corners[2][v] += hv; corners[3][v] += hv;
             const r = palRGB[b * 3], g2 = palRGB[b * 3 + 1], b2 = palRGB[b * 3 + 2];
             for (let kk = 0; kk < 4; kk++) {
               const f = shade * (aop === 255 ? 1 : AOF[(aop >> (kk * 2)) & 3]);
-              pos.push(corners[kk][0], corners[kk][1], corners[kk][2]);
+              pos.push(corners[kk][0] * 16, corners[kk][1] * 16, corners[kk][2] * 16);
               col.push(r * f | 0, g2 * f | 0, b2 * f | 0);
             }
             blk.push(b); cell.push(base[0], base[1], base[2]); dirs.push(dirId);
@@ -969,11 +1249,76 @@ function meshChunk(cx, cy, cz) {
       }
     }
   }
+  quads = meshShapes(cx, cy, cz, pos, col, blk, cell, dirs, quads);
   return {
     cx, cy, cz, quads,
     pos: new Int16Array(pos), col: new Uint8Array(col),
     blk: new Uint16Array(blk), cell: new Int16Array(cell), dir: new Uint8Array(dirs)
   };
+}
+
+/* Blocks that are not full cubes: slabs, stairs, fences, panes, plants and the
+   rest. There are few of them next to the terrain, so each is drawn on its own
+   from the boxes its state describes instead of being merged with its
+   neighbours. A box face is dropped only where it sits flat against a full
+   block, so nothing visible is lost. */
+const FACE_AXIS = [0, 0, 1, 1, 2, 2];                  // dirId -> axis
+const FACE_POS = [1, 0, 1, 0, 1, 0];                   // dirId -> on the high side?
+function meshShapes(cx, cy, cz, pos, col, blk, cell, dirs, quads) {
+  const x0 = cx * CS, y0 = cy * CS, z0 = cz * CS;
+  const xn = Math.min(CS, W - x0), yn = Math.min(CS, H - y0), zn = Math.min(CS, L - z0);
+  const q = [0, 0, 0], e = [0, 0, 0];
+  for (let ly = 0; ly < yn; ly++) {
+    for (let lz = 0; lz < zn; lz++) {
+      let row = (y0 + ly) * W * L + (z0 + lz) * W + x0;
+      for (let lx = 0; lx < xn; lx++, row++) {
+        const b = states[row];
+        if (airFlags[b] || fullFlags[b]) continue;
+        const shape = boxesFor(palette[b]);
+        if (shape === null || (shape !== 'cross' && !shape.length)) continue;
+        const r = palRGB[b * 3], g = palRGB[b * 3 + 1], bl = palRGB[b * 3 + 2];
+        const px = lx + 1, py = ly + 1, pz = lz + 1;
+        const ox = lx * 16, oy = ly * 16, oz = lz * 16;
+        const push4 = (c4, dirId) => {
+          const f = SHADE[dirId];
+          for (let k = 0; k < 4; k++) {
+            pos.push(ox + c4[k][0], oy + c4[k][1], oz + c4[k][2]);
+            col.push(r * f | 0, g * f | 0, bl * f | 0);
+          }
+          blk.push(b); cell.push(x0 + lx, y0 + ly, z0 + lz); dirs.push(dirId | 8);
+          quads++;
+        };
+        if (shape === 'cross') {
+          for (const [ax, ay, az, bx, by, bz] of CROSS_BOXES) {
+            push4([[ax, ay, az], [bx, ay, bz], [bx, by, bz], [ax, by, az]], 2);
+          }
+          continue;
+        }
+        for (const box of shape) {
+          for (let dirId = 0; dirId < 6; dirId++) {
+            const ax = FACE_AXIS[dirId], hi = FACE_POS[dirId];
+            const at = box[hi ? ax + 3 : ax];
+            if (at === (hi ? 16 : 0)) {
+              // flat against the cell wall: skip it when a full block is there
+              e[0] = px; e[1] = py; e[2] = pz;
+              e[ax] += hi ? 1 : -1;
+              if (pad[Pi(e[0], e[1], e[2])]) continue;
+            }
+            const u = ax === 0 ? 1 : 0, v = ax === 2 ? 1 : 2;
+            const c4 = [];
+            for (const [su, sv] of [[0, 0], [1, 0], [1, 1], [0, 1]]) {
+              q[ax] = at;
+              q[u] = box[su ? u + 3 : u];
+              q[v] = box[sv ? v + 3 : v];
+              c4.push([q[0], q[1], q[2]]);
+            }
+            push4(c4, dirId);
+          }
+        }
+      }
+    }
+  }
+  return quads;
 }
 
 function meshList(list, post) {
@@ -1476,7 +1821,8 @@ function initThree() {
       uniform float uYMin, uYMax;
       varying vec3 vColor; varying float vDepth;
       void main(){
-        if (position.y < uYMin - 0.001 || position.y > uYMax + 1.001) {
+        float wy = (modelMatrix * vec4(position,1.0)).y;
+        if (wy < uYMin - 0.001 || wy > uYMax + 1.001) {
           gl_Position = vec4(2.0,2.0,2.0,1.0); return;
         }
         vColor = aColor;
@@ -1500,7 +1846,8 @@ function initThree() {
       uniform float uYMin, uYMax;
       varying vec3 vC;
       void main(){
-        if (position.y < uYMin - 0.001 || position.y > uYMax + 1.001) {
+        float wy = (modelMatrix * vec4(position,1.0)).y;
+        if (wy < uYMin - 0.001 || wy > uYMax + 1.001) {
           gl_Position = vec4(2.0,2.0,2.0,1.0); return;
         }
         vC = aChunk / 255.0;
@@ -1516,7 +1863,8 @@ function initThree() {
       uniform float uYMin, uYMax;
       varying vec3 vId;
       void main(){
-        if (position.y < uYMin - 0.001 || position.y > uYMax + 1.001) {
+        float wy = (modelMatrix * vec4(position,1.0)).y;
+        if (wy < uYMin - 0.001 || wy > uYMax + 1.001) {
           gl_Position = vec4(2.0,2.0,2.0,1.0); return;
         }
         vId = aId / 255.0;
@@ -1549,25 +1897,60 @@ function resize() {
 }
 
 /* ---------------------------------------------------------------- camera */
+/* `cam` is where the camera is heading and `view` is where it is now. Easing
+   one toward the other each frame takes the steps out of the wheel and lets a
+   flick carry on turning, without putting any lag into a drag. */
 const cam = { theta: -0.75, phi: 1.05, r: 120, tx: 0, ty: 0, tz: 0 };
+const view = Object.assign({}, cam);
+let spin = 0, camMoving = false;
+const EASE = 0.42;
 function resetView() {
   cam.theta = -0.75; cam.phi = 1.05;
   cam.r = Math.max(W, L, H) * 1.5 + 12;
   cam.tx = W / 2; cam.ty = H * 0.35; cam.tz = L / 2;
+  Object.assign(view, cam);
+  spin = 0;
   applyCam();
 }
-function applyCam() {
-  const sp = Math.sin(cam.phi), cp = Math.cos(cam.phi);
-  camera.position.set(cam.tx + cam.r * sp * Math.sin(cam.theta), cam.ty + cam.r * cp, cam.tz + cam.r * sp * Math.cos(cam.theta));
-  camera.lookAt(cam.tx, cam.ty, cam.tz);
-  MATS.solid.uniforms.uNear.value = cam.r * 0.6;
-  MATS.solid.uniforms.uFar.value = cam.r * 2.6;
+/* send the camera to one block and come in close enough to work on it */
+function focusOn(x, y, z, r) {
+  cam.tx = x + 0.5; cam.ty = y + 0.5; cam.tz = z + 0.5;
+  cam.r = clamp(r || Math.min(cam.r, Math.max(W, H, L) * 0.22 + 6), 3, 4000);
+  spin = 0;
+  camMoving = true;
   needsRender = true;
+}
+function applyCam() {
+  const sp = Math.sin(view.phi), cp = Math.cos(view.phi);
+  camera.position.set(view.tx + view.r * sp * Math.sin(view.theta), view.ty + view.r * cp, view.tz + view.r * sp * Math.cos(view.theta));
+  camera.lookAt(view.tx, view.ty, view.tz);
+  MATS.solid.uniforms.uNear.value = view.r * 0.6;
+  MATS.solid.uniforms.uFar.value = view.r * 2.6;
+  needsRender = true;
+}
+/* one easing step; true while there is still ground to cover */
+function stepCam() {
+  if (spin) {
+    cam.theta += spin;
+    spin *= 0.9;
+    if (Math.abs(spin) < 0.0004) spin = 0;
+  }
+  let far = 0;
+  for (const k of ['theta', 'phi', 'tx', 'ty', 'tz']) {
+    const d = cam[k] - view[k];
+    if (Math.abs(d) > 1e-4) { view[k] += d * EASE; far = 1; } else view[k] = cam[k];
+  }
+  const dr = cam.r - view.r;
+  if (Math.abs(dr) > view.r * 2e-4) { view.r += dr * EASE; far = 1; } else view.r = cam.r;
+  if (far || spin) { applyCam(); return true; }
+  camMoving = false;
+  return false;
 }
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 
 function initControls(el) {
   const ptrs = {}; let last = null, pinch = 0, downT = 0, downP = null, moved = 0;
+  let vx = 0, lastTap = 0, lastTapP = null;
   const pts = () => Object.values(ptrs);
   const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
@@ -1581,11 +1964,28 @@ function initControls(el) {
     cam.ty += (-rr.y * dx + uu.y * dy) * k;
     cam.tz += (-rr.z * dx + uu.z * dy) * k;
   }
+  /* pull the orbit point toward whatever is under the cursor as you zoom in,
+     so you close in on the corner you are looking at and not the middle */
+  const _z = new THREE.Vector3();
+  function zoomAt(cx, cy, factor) {
+    const before = cam.r;
+    cam.r = clamp(cam.r * factor, 2, 4000);
+    if (cx == null) { camMoving = true; needsRender = true; return; }
+    const rect = el.getBoundingClientRect();
+    _rc.setFromCamera({ x: ((cx - rect.left) / rect.width) * 2 - 1, y: -((cy - rect.top) / rect.height) * 2 + 1 }, camera);
+    _z.copy(_rc.ray.direction).multiplyScalar(before).add(_rc.ray.origin);
+    const k = clamp(1 - cam.r / before, -0.6, 0.6);
+    cam.tx += (_z.x - cam.tx) * k;
+    cam.ty += (_z.y - cam.ty) * k;
+    cam.tz += (_z.z - cam.tz) * k;
+    camMoving = true; needsRender = true;
+  }
   el.addEventListener('pointerdown', e => {
     el.setPointerCapture(e.pointerId);
     ptrs[e.pointerId] = { x: e.clientX, y: e.clientY };
+    spin = 0;
     const n = pts().length;
-    if (n === 1) { last = { x: e.clientX, y: e.clientY }; downT = Date.now(); downP = { x: e.clientX, y: e.clientY }; moved = 0; }
+    if (n === 1) { last = { x: e.clientX, y: e.clientY }; downT = Date.now(); downP = { x: e.clientX, y: e.clientY }; moved = 0; vx = 0; }
     if (n === 2) { const p = pts(); pinch = dist(p[0], p[1]); last = mid(p[0], p[1]); }
   });
   el.addEventListener('pointermove', e => {
@@ -1597,19 +1997,33 @@ function initControls(el) {
       moved += Math.abs(dx) + Math.abs(dy);
       last = { x: e.clientX, y: e.clientY };
       if (e.shiftKey) pan(dx, dy);
-      else { cam.theta -= dx * 0.006; cam.phi = clamp(cam.phi - dy * 0.006, 0.05, Math.PI - 0.05); }
-      applyCam();
+      else { cam.theta -= dx * 0.006; cam.phi = clamp(cam.phi - dy * 0.006, 0.05, Math.PI - 0.05); vx = -dx * 0.006; }
+      camMoving = true; needsRender = true;
     } else if (p.length >= 2) {
       const d = dist(p[0], p[1]), m = mid(p[0], p[1]);
-      if (pinch > 0) cam.r = clamp(cam.r * (pinch / d), 4, 4000);
+      if (pinch > 0) zoomAt(m.x, m.y, pinch / d);
       pan(m.x - last.x, m.y - last.y);
-      pinch = d; last = m; moved += 99; applyCam();
+      pinch = d; last = m; moved += 99; camMoving = true; needsRender = true;
     }
   });
   const up = e => {
     const one = pts().length === 1;
     delete ptrs[e.pointerId];
-    if (one && moved < 9 && Date.now() - downT < 450 && downP) onTap(downP.x, downP.y);
+    if (one && moved < 9 && Date.now() - downT < 450 && downP) {
+      const now = Date.now();
+      const near = lastTapP && Math.hypot(downP.x - lastTapP.x, downP.y - lastTapP.y) < 24;
+      if (tool === 'orbit' && near && now - lastTap < 340) {
+        const hit = pickFast(downP.x, downP.y);
+        if (hit) focusOn(hit.x, hit.y, hit.z);
+        lastTap = 0; lastTapP = null;
+      } else {
+        lastTap = now; lastTapP = downP;
+        onTap(downP.x, downP.y);
+      }
+    } else if (one && moved > 20 && Math.abs(vx) > 0.004) {
+      spin = clamp(vx, -0.06, 0.06);          // a flick keeps the model turning
+      camMoving = true; needsRender = true;
+    }
     const p = pts(); if (p.length === 1) last = { x: p[0].x, y: p[0].y };
     pinch = 0;
   };
@@ -1618,9 +2032,43 @@ function initControls(el) {
   el.addEventListener('contextmenu', e => e.preventDefault());
   el.addEventListener('wheel', e => {
     e.preventDefault();
-    cam.r = clamp(cam.r * (1 + Math.sign(e.deltaY) * 0.12), 4, 4000);
-    applyCam();
+    // trackpads send small pixel deltas and mice send big ones; treat both gently
+    const step = clamp(Math.abs(e.deltaY) / (e.deltaMode ? 3 : 240), 0.02, 0.5);
+    zoomAt(e.clientX, e.clientY, 1 + Math.sign(e.deltaY) * step * (e.shiftKey ? 2.5 : 1));
   }, { passive: false });
+  el.addEventListener('dblclick', e => {
+    if (tool !== 'orbit') return;
+    const hit = pickFast(e.clientX, e.clientY);
+    if (hit) focusOn(hit.x, hit.y, hit.z);
+  });
+
+  /* keyboard, for when the iPad has a keyboard on it or you are at a desk */
+  addEventListener('keydown', e => {
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const far = cam.r * (e.shiftKey ? 0.12 : 0.045);
+    const fwd = new THREE.Vector3(Math.sin(cam.theta), 0, Math.cos(cam.theta)).normalize();
+    const rgt = new THREE.Vector3(fwd.z, 0, -fwd.x);
+    let hit = true;
+    switch (e.key.toLowerCase()) {
+      case 'w': cam.tx -= fwd.x * far; cam.tz -= fwd.z * far; break;
+      case 's': cam.tx += fwd.x * far; cam.tz += fwd.z * far; break;
+      case 'a': cam.tx -= rgt.x * far; cam.tz -= rgt.z * far; break;
+      case 'd': cam.tx += rgt.x * far; cam.tz += rgt.z * far; break;
+      case 'q': cam.ty -= far; break;
+      case 'e': cam.ty += far; break;
+      case 'arrowleft': cam.theta += 0.12; break;
+      case 'arrowright': cam.theta -= 0.12; break;
+      case 'arrowup': cam.phi = clamp(cam.phi - 0.1, 0.05, Math.PI - 0.05); break;
+      case 'arrowdown': cam.phi = clamp(cam.phi + 0.1, 0.05, Math.PI - 0.05); break;
+      case '+': case '=': zoomAt(null, null, 0.84); break;
+      case '-': case '_': zoomAt(null, null, 1.19); break;
+      case 'r': resetView(); break;
+      default: hit = false;
+    }
+    if (hit) { e.preventDefault(); spin = 0; camMoving = true; needsRender = true; }
+  });
 }
 
 /* ---------------------------------------------------------------- chunks */
@@ -1677,6 +2125,10 @@ function applyChunk(c) {
 
   const mesh = new THREE.Mesh(geo, MATS.solid);
   const pickMesh = new THREE.Mesh(pgeo, MATS.pick);
+  for (const m of [mesh, pickMesh]) {
+    m.position.set(c.cx * CS, c.cy * CS, c.cz * CS);
+    m.scale.setScalar(1 / 16);
+  }
   mesh.userData.key = key; pickMesh.userData.key = key;
   scene.add(mesh); pickScene.add(pickMesh);
   chunkMeshes.set(key, { mesh, pickMesh, blk: c.blk, cell: c.cell, dir: c.dir, ord });
@@ -1720,7 +2172,7 @@ function pickFast(cx, cy) {
   const q = readPixelAt(cx, cy, MATS.pick, key);
   if (q === null || q >= c.blk.length) return null;
 
-  const d = c.dir[q], ax = d >> 1, neg = d & 1;
+  const d = c.dir[q] & 7, exact = (c.dir[q] & 8) !== 0, ax = d >> 1, neg = d & 1;
   const n = [0, 0, 0]; n[ax] = neg ? -1 : 1;
   const base = [c.cell[q * 3], c.cell[q * 3 + 1], c.cell[q * 3 + 2]];
 
@@ -1735,7 +2187,7 @@ function pickFast(cx, cy) {
   const o = [_rc.ray.origin.x, _rc.ray.origin.y, _rc.ray.origin.z];
   const dv = [_rc.ray.direction.x, _rc.ray.direction.y, _rc.ray.direction.z];
   const cell = base.slice();
-  if (Math.abs(dv[ax]) > 1e-9) {
+  if (!exact && Math.abs(dv[ax]) > 1e-9) {
     const plane = base[ax] + (neg ? 0 : 1);
     const t = (plane - o[ax]) / dv[ax];
     if (t > 0) {
@@ -2031,7 +2483,8 @@ function renderBlocks() {
     return true;
   }).slice(0, 400);
   grid.innerHTML = list.map(b =>
-    `<button class="bk" data-id="${b.id}" title="${b.name}" style="background:${b.c}" aria-pressed="${b.id === selectedBlock}"></button>`
+    `<button class="bk" data-id="${b.id}" title="${b.name}" aria-pressed="${b.id === selectedBlock}">` +
+    `<span class="sw" style="background:${b.c}"></span><span class="lb">${b.name}</span></button>`
   ).join('') || '<p class="empty">No block matches that.</p>';
   for (const el of grid.querySelectorAll('.bk')) {
     el.addEventListener('click', () => { selectBlock(el.dataset.id); if (tool === 'orbit') setTool('place'); });
@@ -2048,6 +2501,21 @@ function initBlocks() {
     });
   }
   $('#blockSearch').addEventListener('input', renderBlocks);
+  const gm = $('#gridMode');
+  let tiles = false;
+  try { tiles = localStorage.getItem('bw.blockTiles') === '1'; } catch (e) {}
+  const applyMode = () => {
+    $('#blockGrid').classList.toggle('tiles', tiles);
+    gm.setAttribute('aria-pressed', String(tiles));
+    gm.textContent = tiles ? '\u2630' : '\u25a6';
+    gm.title = tiles ? 'Show the names' : 'Show colour tiles only';
+  };
+  gm.onclick = () => {
+    tiles = !tiles;
+    try { localStorage.setItem('bw.blockTiles', tiles ? '1' : '0'); } catch (e) {}
+    applyMode();
+  };
+  applyMode();
   renderBlocks(); selectBlock(selectedBlock);
 }
 
@@ -2305,6 +2773,7 @@ function fallbackCopy(text, done) {
 /* ---------------------------------------------------------------- render */
 function tick() {
   requestAnimationFrame(tick);
+  if (camMoving) stepCam();
   if (!needsRender) return;
   needsRender = false;
   renderer.setRenderTarget(null);
