@@ -7,17 +7,54 @@ const $ = s => document.querySelector(s);
 const AIR = 'minecraft:air';
 
 /* ---------------------------------------------------------------- worker */
-const worker = new Worker('js/worker.js', { type: 'module' });
+/* A classic worker, not a module one: module workers fail silently on older
+   iPadOS Safari and inside sandboxed frames, which looks like an app where
+   no button does anything. */
+let worker = null, workerDead = false;
 let seq = 0;
 const pending = new Map();
-worker.onmessage = (e) => {
-  const m = e.data, h = pending.get(m.id);
-  if (!h) return;
-  if (h.stream) { h.onPart(m); if (m.done) { pending.delete(m.id); h.resolve(); } return; }
-  pending.delete(m.id);
-  m.ok === false ? h.reject(new Error(m.error || 'worker failed')) : h.resolve(m);
-};
+
+function fatal(msg, detail) {
+  workerDead = true;
+  for (const h of pending.values()) h.reject && h.reject(new Error(msg));
+  pending.clear();
+  const b = document.querySelector('#boot');
+  if (b) {
+    b.hidden = false;
+    b.innerHTML = '<div style="max-width:420px;padding:0 24px;text-align:left">' +
+      '<p style="color:var(--danger);margin-bottom:10px">Something went wrong</p>' +
+      '<p style="font:14px/1.6 Barlow,sans-serif;color:var(--text);text-transform:none;letter-spacing:0;font-weight:400">' +
+      msg + '</p>' +
+      (detail ? '<p class="mono" style="font-size:11px;color:var(--muted);text-transform:none;letter-spacing:0;' +
+        'margin-top:10px;word-break:break-all;font-weight:400">' + String(detail).slice(0, 300) + '</p>' : '') +
+      '<p style="font:13px/1.6 Barlow,sans-serif;color:var(--muted);text-transform:none;letter-spacing:0;' +
+      'margin-top:14px;font-weight:400">Reload the page to try again. If it keeps happening, send me this message.</p>' +
+      '</div>';
+  }
+}
+
+function startWorker() {
+  try {
+    worker = new Worker('js/worker.bundle.js');
+  } catch (err) {
+    fatal('The app could not start its engine, so nothing on screen will respond.', err.message);
+    return false;
+  }
+  worker.onerror = (e) => {
+    fatal('The engine stopped with an error.', (e && e.message) || 'unknown');
+  };
+  worker.onmessage = (e) => {
+    const m = e.data, h = pending.get(m.id);
+    if (!h) return;
+    if (h.stream) { h.onPart(m); if (m.done) { pending.delete(m.id); h.resolve(); } return; }
+    pending.delete(m.id);
+    m.ok === false ? h.reject(new Error(m.error || 'worker failed')) : h.resolve(m);
+  };
+  return true;
+}
+
 function call(msg, transfer) {
+  if (workerDead) return Promise.reject(new Error('engine not running'));
   const id = ++seq;
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject });
@@ -25,6 +62,7 @@ function call(msg, transfer) {
   });
 }
 function stream(msg, onPart) {
+  if (workerDead) return Promise.reject(new Error('engine not running'));
   const id = ++seq;
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject, stream: true, onPart });
@@ -467,10 +505,14 @@ async function afterLoad(info, name) {
 
   resetView(); resize(); paintSlice();
   showBoot('Building the model');
-  await stream({ op: 'meshAll' }, (part) => {
-    for (const c of part.chunks) applyChunk(c);
-    bootProg(part.progress);
-  });
+  try {
+    await stream({ op: 'meshAll' }, (part) => {
+      for (const c of part.chunks) applyChunk(c);
+      bootProg(part.progress);
+    });
+  } catch (err) {
+    fatal('The model could not be drawn.', err.message); return;
+  }
   hideBoot();
   refreshStats();
 }
@@ -761,6 +803,7 @@ function initUI() {
   $('#btnUndo').onclick = undo;
   $('#btnRedo').onclick = redo;
   $('#btnMenu').onclick = () => { document.querySelector('.tab[data-pane="pFiles"]').click(); };
+  $('#btnOpen').onclick = () => $('#fileInput').click();
 
   $('#doFill').onclick = () => doFill(selectedBlock, false);
   $('#doHollow').onclick = () => doFill(selectedBlock, true);
@@ -838,6 +881,18 @@ function initUI() {
 /* ---------------------------------------------------------------- start */
 async function start() {
   initThree(); initUI(); initBlocks(); initSlice();
+  if (!startWorker()) return;
+  // make sure the engine actually answers before trusting the interface
+  showBoot('Starting');
+  try {
+    await Promise.race([
+      call({ op: 'newProject', W: 4, H: 4, L: 4, ao: true }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('no answer after 15 seconds')), 15000))
+    ]);
+  } catch (err) {
+    fatal('The app could not start its engine, so the buttons will not respond.', err.message);
+    return;
+  }
   await renderProjects();
   const last = await Projects.last();
   if (last) {

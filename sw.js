@@ -1,10 +1,10 @@
 /* Offline shell: cache everything on install, serve cache-first so the app
    opens with no signal at all. Bump CACHE to ship an update. */
-const CACHE = 'blockwright-v1';
+const CACHE = 'blockwright-v2';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest',
   './vendor/three.min.js',
-  './js/app.js', './js/worker.js', './js/litematic.js', './js/blocks.js', './js/projects.js',
+  './js/app.js', './js/worker.bundle.js', './js/worker.js', './js/litematic.js', './js/blocks.js', './js/projects.js',
   './icon-180.png', './icon-192.png', './icon-512.png'
 ];
 self.addEventListener('install', e => {
